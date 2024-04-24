@@ -1,4 +1,3 @@
-
 #include <gtk/gtk.h>
 
 struct gui_info_struct {
@@ -36,10 +35,9 @@ void apply_filters () {
 }
 
 /* CALLBACK: zoom on scroll */
-void zoom_clb(
-	GtkEventControllerScroll* gesture,
-	gdouble dx, gdouble dy,
-	GtkWidget* in_pic)
+void zoom_clb(	GtkEventControllerScroll* gesture,
+		gdouble dx, gdouble dy,
+		GtkWidget* in_pic )
 {
 	static gfloat scale = 0.5f;
 	if (!inpic_obuf) return;						// skip when no picture is available
@@ -64,11 +62,9 @@ void zoom_clb(
 }
 
 /* CALBACK: on mouse motion */
-void mm_clb (
-		GtkEventControllerMotion* self,
+void mm_clb (	GtkEventControllerMotion* self,
 		gdouble x, gdouble y,
-		GtkScrolledWindow *popan
-	)
+		GtkScrolledWindow *popan )
 {
 	static gdouble last_mouse_x, last_mouse_y;				// retain last location
 	gdouble dx, dy;
@@ -110,23 +106,46 @@ void mcp_clb (	GtkGestureClick* self,
 }
 
 /* CALBACK: on mouse click release */
-void mcr_clb (GtkGesture* gesture, GdkEventSequence* sequence, gpointer user_data) {
+void mcr_clb (	GtkGesture* gesture,
+		GdkEventSequence* sequence,
+		gpointer user_data )
+{
 	// skip when no picture is available
 	if (inpic_obuf)
 		mouse_pressed = FALSE;
 }
 
-/* CALLBACK: click on insert picture */
-void insrt_sub (GtkWidget *widget, gpointer data) {
-	gtk_file_dialog_new ();
+/* CALLBACK: on open dialog close */
+void open_cb (GObject *oidiag, GAsyncResult *res, gpointer data) {
+	GFile* inpic;
+	inpic = gtk_file_dialog_open_finish (	GTK_FILE_DIALOG(oidiag),
+						res,
+						NULL );				// open file
 	GdkTexture *ipictxt;							// inserted picture texture
-	inpic_obuf = gdk_pixbuf_new_from_file ("image8.png", NULL);		// retrive pixel data from picture file
+	inpic_obuf = gdk_pixbuf_new_from_file (g_file_get_path(inpic), NULL);	// retrive pixel data from picture file
 	ipictxt = gdk_texture_new_for_pixbuf (inpic_obuf);			// create texutre from pixel data
-
-	//inpic_pixbuf = gdk_pixbuf_scale_simple (inpic_pixbuf,300,5000,GDK_INTERP_NEAREST); // zoom
-
 	gtk_picture_set_paintable (GTK_PICTURE(in_pic), GDK_PAINTABLE(ipictxt));
 	g_clear_object (&ipictxt);						// clear texture
+}
+
+/* CALLBACK: click on insert picture */
+void insrt_sub (GtkWidget* widget, GtkWindow* main_window) {
+	GtkFileDialog* oidiag = gtk_file_dialog_new ();				// open image dialog
+	gtk_file_dialog_set_modal (oidiag, TRUE);				// disable main window when choosing a new file
+
+	/* filter based on file suffix */
+	GListStore* suffix_list = g_list_store_new (GTK_TYPE_FILE_FILTER);
+	GtkFileFilter* suffix_png = gtk_file_filter_new();
+	GtkFileFilter* suffix_jpg = gtk_file_filter_new();
+	gtk_file_filter_add_suffix(suffix_png, "png");
+	gtk_file_filter_set_name(suffix_png, "PNG");
+	g_list_store_append(suffix_list, suffix_png);
+	gtk_file_filter_add_suffix(suffix_jpg, "jpg");
+	gtk_file_filter_set_name(suffix_jpg, "JPG");
+	g_list_store_append(suffix_list, suffix_jpg);
+	gtk_file_dialog_set_filters(oidiag, G_LIST_MODEL(suffix_list));
+
+	gtk_file_dialog_open (oidiag, main_window, NULL, &open_cb, NULL);	// open_cb will be called on open or cancel
 }
 
 /* CALLBACK: threshold filter state: active/deactive */
@@ -171,21 +190,21 @@ void tfl_clb (GtkWidget *this, gpointer data) {
 }
 
 void activate (GtkApplication *app, gpointer user_data) {
-	GtkWidget *main_window;
+	GtkWidget *mwin;							// main window
 	GtkWidget *winpan;							// main pane container
 	GtkWidget *cpan;							// control pane
-	GtkWidget *popan;								// picture output pane
+	GtkWidget *popan;							// picture output pane
 	GtkWidget *header;							// headerbar
 	GtkWidget *open_btn_lbl, *open_btn_icn, *open_btn_box, *open_btn;	// insert picture button
 	GtkWidget *tf_box, *tf_check, *tf_uval, *tf_lval;			// threshold filter
 
 	/* create a new window, and set its title */
-	main_window = gtk_application_window_new (app);
-	gtk_window_set_title (GTK_WINDOW (main_window), "Window");
+	mwin = gtk_application_window_new (app);
+	gtk_window_set_title (GTK_WINDOW (mwin), "Window");
 
 	/* headerbar*/
 	header = gtk_header_bar_new ();
-	gtk_window_set_titlebar (GTK_WINDOW (main_window), header);
+	gtk_window_set_titlebar (GTK_WINDOW (mwin), header);
 
 	/* open button in headerbar */
 	open_btn_icn = gtk_image_new_from_icon_name ("insert-image");		// icon for open button
@@ -200,7 +219,7 @@ void activate (GtkApplication *app, gpointer user_data) {
 	gtk_box_set_homogeneous (GTK_BOX(open_btn_box), FALSE);			// container decoration
 	gtk_label_set_justify (GTK_LABEL(open_btn_lbl), GTK_JUSTIFY_CENTER);
 
-	g_signal_connect (open_btn, "clicked", G_CALLBACK (insrt_sub), NULL);	// click on insert button signal
+	g_signal_connect (open_btn, "clicked", G_CALLBACK (insrt_sub), mwin);	// click on insert button signal
 	gtk_header_bar_pack_start (GTK_HEADER_BAR (header), open_btn);		// attach open button to the header bar
 
 	/* main window layout */
@@ -224,7 +243,7 @@ void activate (GtkApplication *app, gpointer user_data) {
 	gtk_paned_set_resize_end_child (GTK_PANED (winpan), TRUE);
 	gtk_paned_set_shrink_end_child (GTK_PANED (winpan), FALSE);
 
-	gtk_window_set_child (GTK_WINDOW (main_window), winpan);		// attach paned view to the main window
+	gtk_window_set_child (GTK_WINDOW (mwin), winpan);			// attach paned view to the main window
 
 	/* control pane */
 	// threshold filter
@@ -252,7 +271,7 @@ void activate (GtkApplication *app, gpointer user_data) {
 	g_signal_connect (tf_check, "toggled", G_CALLBACK (tf_st), tf_check);	// attach threshold filter signal on activation/deactivation
 
 	/* render */
-	gtk_window_present (GTK_WINDOW (main_window));
+	gtk_window_present (GTK_WINDOW (mwin));
 
 	/* events */
 	// mouse scroll
@@ -282,7 +301,8 @@ int main (int argc, char **argv) {
   GtkApplication *app;
   int status;
 
-  app = gtk_application_new ("org.gtk.example", G_APPLICATION_DEFAULT_FLAGS);
+  app = gtk_application_new (	"com.github.kanaankebriti.doxifix",
+  				G_APPLICATION_DEFAULT_FLAGS );
   g_signal_connect (app, "activate", G_CALLBACK (activate), NULL);
   status = g_application_run (G_APPLICATION (app), argc, argv);
   g_object_unref (app);
