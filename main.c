@@ -200,7 +200,7 @@ void activate (GtkApplication *app, gpointer user_data) {
 
 	/* create a new window, and set its title */
 	mwin = gtk_application_window_new (app);
-	gtk_window_set_title (GTK_WINDOW (mwin), "Window");
+	gtk_window_set_title (GTK_WINDOW (mwin), "Doxifix");			// set main window title
 
 	/* headerbar*/
 	header = gtk_header_bar_new ();
