@@ -6,7 +6,7 @@ struct gui_info_struct {
 	gboolean tf_stat;							// threshold filter enable/disable
 } gui_info = {0, 190, FALSE};							// set default values of gui input elements
 
-GtkWidget *in_pic;								// inserted picture widget
+GtkWidget *inpic;								// inserted picture widget
 GdkPixbuf* inpic_obuf;								// original pixel data of inserted picture
 GdkPixbuf* inpic_cbuf;								// a copy of inpic_obuf
 gboolean mouse_pressed = FALSE;							// hold click press to pan
@@ -14,14 +14,15 @@ gboolean mouse_pressed = FALSE;							// hold click press to pan
 /* filters procedure */
 void apply_filters () {
 	GdkTexture *ipictxt;							// inserted picture texture
-	const unsigned int pixbuf_size = gdk_pixbuf_get_byte_length(inpic_obuf);
-	g_clear_object (&inpic_cbuf);						// clear previous pixel buffer
-	inpic_cbuf = gdk_pixbuf_copy (inpic_obuf);				// make a copy of original pixbuf
 	guchar* inpic_cbuf_ptr;							// a pointer to the pixel data of the copy of inserted picture
-	inpic_cbuf_ptr = gdk_pixbuf_get_pixels (inpic_cbuf);			// pixel data ptr for current picture
+
+	g_clear_object (&inpic_cbuf);						// clear previous pixel buffer
+	inpic_cbuf = gdk_pixbuf_copy (inpic_obuf);				// INIT: make a copy of original pixbuf
+	inpic_cbuf_ptr = gdk_pixbuf_get_pixels (inpic_cbuf);			// INIT: pixel data ptr for current picture
+	const unsigned int pixbuf_size = gdk_pixbuf_get_byte_length(inpic_obuf);// INIT: number of buffer pixels * bit depth
 
 	/* threshold filter */
-	if (gui_info.tf_stat)
+	if (gui_info.tf_stat)							// apply if asked for
 		for (unsigned int i = 0; i < pixbuf_size; i++)
 			if (inpic_cbuf_ptr[i] > gui_info.tf_u)
 				inpic_cbuf_ptr[i] = 255;
@@ -29,7 +30,7 @@ void apply_filters () {
 				inpic_cbuf_ptr[i] = 0;
 
 	ipictxt = gdk_texture_new_for_pixbuf (inpic_cbuf);			// create texutre from the copy of pixel data
-	gtk_picture_set_paintable (GTK_PICTURE(in_pic), GDK_PAINTABLE(ipictxt));
+	gtk_picture_set_paintable (GTK_PICTURE(inpic), GDK_PAINTABLE(ipictxt));
 	//gdk_texture_save_to_png (ipictxt, "cv.png");
 	g_clear_object (&ipictxt);						// clear texture
 }
@@ -37,7 +38,7 @@ void apply_filters () {
 /* CALLBACK: zoom on scroll */
 void zoom_clb(	GtkEventControllerScroll* gesture,
 		gdouble dx, gdouble dy,
-		GtkWidget* in_pic )
+		GtkWidget* inpic )
 {
 	static gfloat scale = 0.5f;
 	if (!inpic_obuf) return;						// skip when no picture is available
@@ -57,8 +58,8 @@ void zoom_clb(	GtkEventControllerScroll* gesture,
 	int w = gdk_pixbuf_get_width (inpic_obuf);
 	int h = gdk_pixbuf_get_height (inpic_obuf);
 
-	gtk_widget_set_size_request(in_pic, w * scale, h * scale);
-	gtk_widget_queue_draw(in_pic);
+	gtk_widget_set_size_request(inpic, w * scale, h * scale);
+	gtk_widget_queue_draw(inpic);
 }
 
 /* CALBACK: on mouse motion */
@@ -86,7 +87,7 @@ void mm_clb (	GtkEventControllerMotion* self,
 			gtk_adjustment_set_value(popan_va, dy);
 			gtk_scrolled_window_set_vadjustment (popan, popan_va);
 			// redraw
-			gtk_widget_queue_draw(in_pic);
+			gtk_widget_queue_draw(inpic);
 		} else {
 			// store mouse (x,y) before click
 			last_mouse_x = x;
@@ -118,14 +119,18 @@ void mcr_clb (	GtkGesture* gesture,
 /* CALLBACK: on open dialog close */
 void open_cb (GObject *odiag, GAsyncResult *res, gpointer data) {
 	GdkTexture *ipictxt;							// inserted picture texture
-	GFile* inpic;								// inserted picture file handler
-	inpic = gtk_file_dialog_open_finish (GTK_FILE_DIALOG(odiag), res, NULL);// open file
+	GFile* ipicf;								// inserted picture file handler
+	ipicf = gtk_file_dialog_open_finish (GTK_FILE_DIALOG(odiag), res, NULL);// open file
 	// skip on cancel
-	if (inpic) {
-		inpic_obuf = gdk_pixbuf_new_from_file (	g_file_get_path(inpic),
+	if (ipicf) {
+		inpic_obuf = gdk_pixbuf_new_from_file (	g_file_get_path(ipicf),
 							NULL );			// retrive pixel data from picture file
+		gdk_pixbuf_saturate_and_pixelate (	inpic_obuf,
+							inpic_obuf,
+							0.f,
+							FALSE );		// convert to grayscale
 		ipictxt = gdk_texture_new_for_pixbuf (inpic_obuf);		// create texutre from pixel data
-		gtk_picture_set_paintable (	GTK_PICTURE(in_pic),
+		gtk_picture_set_paintable (	GTK_PICTURE(inpic),
 						GDK_PAINTABLE(ipictxt) );	// render texture
 		g_clear_object (&ipictxt);					// clear texture
 	}
@@ -272,9 +277,9 @@ void activate (GtkApplication *app, gpointer user_data) {
 	winpan = gtk_paned_new (GTK_ORIENTATION_HORIZONTAL);			// INIT: create paned view
 	cpan = gtk_box_new (GTK_ORIENTATION_VERTICAL, 10);			// INIT: create control pane
 	popan = gtk_scrolled_window_new ();					// INIT: create picture output pane
-	in_pic = gtk_picture_new ();						// INIT: create picture object
+	inpic = gtk_picture_new ();						// INIT: create picture object
 
-	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW(popan), in_pic);	// attach picture to pane
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW(popan), inpic);	// attach picture to pane
 	gtk_paned_set_start_child (GTK_PANED (winpan), cpan);			// attach control pane
 	gtk_paned_set_end_child (GTK_PANED (winpan), popan);			// attach picture output pane
 
@@ -326,20 +331,20 @@ void activate (GtkApplication *app, gpointer user_data) {
 			GTK_EVENT_CONTROLLER_SCROLL_VERTICAL |
 			GTK_EVENT_CONTROLLER_SCROLL_DISCRETE
 		);
-	gtk_widget_add_controller(in_pic, scroll_event);
-	g_signal_connect(scroll_event, "scroll", G_CALLBACK(zoom_clb), in_pic);
+	gtk_widget_add_controller(inpic, scroll_event);
+	g_signal_connect(scroll_event, "scroll", G_CALLBACK(zoom_clb), inpic);
 	// mouse click
 	GtkGesture* click_event = gtk_gesture_click_new();
 	gtk_gesture_single_set_button (
 		GTK_GESTURE_SINGLE(click_event),
 		GDK_BUTTON_PRIMARY
 	);
-	gtk_widget_add_controller(in_pic, GTK_EVENT_CONTROLLER(click_event));
-	g_signal_connect(click_event, "pressed", G_CALLBACK(mcp_clb), in_pic);
-	g_signal_connect(click_event, "released", G_CALLBACK(mcr_clb), in_pic);
+	gtk_widget_add_controller(inpic, GTK_EVENT_CONTROLLER(click_event));
+	g_signal_connect(click_event, "pressed", G_CALLBACK(mcp_clb), inpic);
+	g_signal_connect(click_event, "released", G_CALLBACK(mcr_clb), inpic);
 	// mouse motion
 	GtkEventController* mm_event = gtk_event_controller_motion_new();
-	gtk_widget_add_controller(in_pic, mm_event);
+	gtk_widget_add_controller(inpic, mm_event);
 	g_signal_connect(mm_event, "motion", G_CALLBACK(mm_clb), popan);
 }
 
