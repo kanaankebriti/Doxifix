@@ -30,7 +30,7 @@ void apply_filters () {
 
 	ipictxt = gdk_texture_new_for_pixbuf (inpic_cbuf);			// create texutre from the copy of pixel data
 	gtk_picture_set_paintable (GTK_PICTURE(in_pic), GDK_PAINTABLE(ipictxt));
-	gdk_texture_save_to_png (ipictxt, "cv.png");
+	//gdk_texture_save_to_png (ipictxt, "cv.png");
 	g_clear_object (&ipictxt);						// clear texture
 }
 
@@ -116,22 +116,25 @@ void mcr_clb (	GtkGesture* gesture,
 }
 
 /* CALLBACK: on open dialog close */
-void open_cb (GObject *oidiag, GAsyncResult *res, gpointer data) {
-	GFile* inpic;
-	inpic = gtk_file_dialog_open_finish (	GTK_FILE_DIALOG(oidiag),
-						res,
-						NULL );				// open file
+void open_cb (GObject *odiag, GAsyncResult *res, gpointer data) {
 	GdkTexture *ipictxt;							// inserted picture texture
-	inpic_obuf = gdk_pixbuf_new_from_file (g_file_get_path(inpic), NULL);	// retrive pixel data from picture file
-	ipictxt = gdk_texture_new_for_pixbuf (inpic_obuf);			// create texutre from pixel data
-	gtk_picture_set_paintable (GTK_PICTURE(in_pic), GDK_PAINTABLE(ipictxt));
-	g_clear_object (&ipictxt);						// clear texture
+	GFile* inpic;								// inserted picture file handler
+	inpic = gtk_file_dialog_open_finish (GTK_FILE_DIALOG(odiag), res, NULL);// open file
+	// skip on cancel
+	if (inpic) {
+		inpic_obuf = gdk_pixbuf_new_from_file (	g_file_get_path(inpic),
+							NULL );			// retrive pixel data from picture file
+		ipictxt = gdk_texture_new_for_pixbuf (inpic_obuf);		// create texutre from pixel data
+		gtk_picture_set_paintable (	GTK_PICTURE(in_pic),
+						GDK_PAINTABLE(ipictxt) );	// render texture
+		g_clear_object (&ipictxt);					// clear texture
+	}
 }
 
-/* CALLBACK: click on insert picture */
+/* CALLBACK: click on insert button */
 void insrt_sub (GtkWidget* widget, GtkWindow* main_window) {
-	GtkFileDialog* oidiag = gtk_file_dialog_new ();				// open image dialog
-	gtk_file_dialog_set_modal (oidiag, TRUE);				// disable main window when choosing a new file
+	GtkFileDialog* odiag = gtk_file_dialog_new ();				// open picture dialog
+	gtk_file_dialog_set_modal (odiag, TRUE);				// disable main window when choosing a new file
 
 	/* filter based on file suffix */
 	GListStore* suffix_list = g_list_store_new (GTK_TYPE_FILE_FILTER);
@@ -143,9 +146,34 @@ void insrt_sub (GtkWidget* widget, GtkWindow* main_window) {
 	gtk_file_filter_add_suffix(suffix_jpg, "jpg");
 	gtk_file_filter_set_name(suffix_jpg, "JPG");
 	g_list_store_append(suffix_list, suffix_jpg);
-	gtk_file_dialog_set_filters(oidiag, G_LIST_MODEL(suffix_list));
+	gtk_file_dialog_set_filters(odiag, G_LIST_MODEL(suffix_list));
 
-	gtk_file_dialog_open (oidiag, main_window, NULL, &open_cb, NULL);	// open_cb will be called on open or cancel
+	gtk_file_dialog_open (odiag, main_window, NULL, &open_cb, NULL);	// open_cb will be called on open or cancel
+}
+
+/* CALLBACK: on save dialog close */
+void save_cb (GObject *sdiag, GAsyncResult *res, gpointer data) {
+	GFile* opic;
+	opic = gtk_file_dialog_save_finish (GTK_FILE_DIALOG(sdiag), res, NULL);	// output picture
+	// skip on cancel
+	if (opic) {
+		GString* opicp = g_string_new(g_file_get_path(opic));		// path to output picture
+		g_string_append (opicp, ".png");				// append ".png" to the filename
+		// skip when no picture is available
+		if (inpic_obuf  != NULL)
+			gdk_pixbuf_save (	inpic_cbuf,
+						opicp->str,
+						"png",
+						NULL,
+						"compression", "9", NULL );	// save to file
+	}
+}
+
+/* CALLBACK: click on save button */
+void svb_sub (GtkWidget* widget, GtkWindow* main_window) {
+	GtkFileDialog* sdiag = gtk_file_dialog_new ();				// save picture dialog
+	gtk_file_dialog_set_modal (sdiag, TRUE);				// disable main window when saving
+	gtk_file_dialog_save (sdiag, main_window, NULL, &save_cb, NULL);	// save_cb will be called on save or cancel
 }
 
 /* CALLBACK: threshold filter state: active/deactive */
@@ -190,43 +218,61 @@ void tfl_clb (GtkWidget *this, gpointer data) {
 }
 
 void activate (GtkApplication *app, gpointer user_data) {
-	GtkWidget *mwin;							// main window
-	GtkWidget *winpan;							// main pane container
-	GtkWidget *cpan;							// control pane
-	GtkWidget *popan;							// picture output pane
-	GtkWidget *header;							// headerbar
-	GtkWidget *open_btn_lbl, *open_btn_icn, *open_btn_box, *open_btn;	// insert picture button
+	GtkWidget* mwin;							// main window
+	GtkWidget* winpan;							// main pane container
+	GtkWidget* cpan;							// control pane
+	GtkWidget* popan;							// picture output pane
+
+	GtkWidget* header;							// headerbar
+	GtkWidget* hbtnsc;							// headerbar buttons container
+	GtkWidget* open_btn_lbl, *open_btn_icn, *open_btn_box, *open_btn;	// insert picture button
+	GtkWidget* save_btn_lbl, *save_btn_icn, *save_btn_box, *save_btn;	// save picture button
+
 	GtkWidget *tf_box, *tf_check, *tf_uval, *tf_lval;			// threshold filter
 
-	/* create a new window, and set its title */
-	mwin = gtk_application_window_new (app);
-	gtk_window_set_title (GTK_WINDOW (mwin), "Doxifix");			// set main window title
+	/* main window */
+	mwin = gtk_application_window_new (app);				// INIT: create main window
+	gtk_window_set_title (GTK_WINDOW (mwin), "Doxifix");			// ATTR: set main window title
 
 	/* headerbar*/
-	header = gtk_header_bar_new ();
-	gtk_window_set_titlebar (GTK_WINDOW (mwin), header);
+	header = gtk_header_bar_new ();						// INIT: new headerbar
+	gtk_window_set_titlebar (GTK_WINDOW (mwin), header);			// attach headerbar to the main window
+	hbtnsc = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 5);			// INIT: create headerbar buttons container
+	gtk_box_set_homogeneous (GTK_BOX(hbtnsc), TRUE);			// ATTR: all headerbar buttons are of same width
 
 	/* open button in headerbar */
-	open_btn_icn = gtk_image_new_from_icon_name ("insert-image");		// icon for open button
-	open_btn_lbl = gtk_label_new ("Insert");				// label for open button
-	open_btn_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 10);		// container for icon + label
-	open_btn = gtk_button_new ();						// open button itself
-
+	open_btn_icn = gtk_image_new_from_icon_name ("insert-image");		// INIT: icon for open button
+	open_btn_lbl = gtk_label_new ("Insert");				// INIT: label for open button
+	open_btn_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 5);		// INIT: container for icon + label
+	open_btn = gtk_button_new ();						// INIT: open button itself
+	gtk_box_set_homogeneous (GTK_BOX(open_btn_box), FALSE);			// ATTR: container decoration
+	gtk_label_set_justify (GTK_LABEL(open_btn_lbl), GTK_JUSTIFY_CENTER);	// ATTR: label decoration
 	gtk_box_append (GTK_BOX(open_btn_box), open_btn_icn);			// attach icon to the container
 	gtk_box_append (GTK_BOX(open_btn_box), open_btn_lbl);			// attach label to the container
 	gtk_button_set_child (GTK_BUTTON(open_btn), open_btn_box);		// attach container to open button
+	g_signal_connect (open_btn, "clicked", G_CALLBACK (insrt_sub), mwin);	// SIG: click on insert button signal
+	gtk_box_append (GTK_BOX(hbtnsc), open_btn);				// attach open_btn to buttons container
 
-	gtk_box_set_homogeneous (GTK_BOX(open_btn_box), FALSE);			// container decoration
-	gtk_label_set_justify (GTK_LABEL(open_btn_lbl), GTK_JUSTIFY_CENTER);
+	/* save button in headerbar */
+	save_btn_icn = gtk_image_new_from_icon_name ("document-save");		// INIT: icon for save button
+	save_btn_lbl = gtk_label_new ("Save");					// INIT: label for save button
+	save_btn_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 5);		// INIT: container for icon + label
+	save_btn = gtk_button_new ();						// INIT: save button itself
+	gtk_box_set_homogeneous (GTK_BOX(save_btn_box), FALSE);			// ATTR: container decoration
+	gtk_label_set_justify (GTK_LABEL(save_btn_lbl), GTK_JUSTIFY_CENTER);	// ATTR: label decoration
+	gtk_box_append (GTK_BOX(save_btn_box), save_btn_icn);			// attach icon to the container
+	gtk_box_append (GTK_BOX(save_btn_box), save_btn_lbl);			// attach label to the container
+	gtk_button_set_child (GTK_BUTTON(save_btn), save_btn_box);		// attach container to save button
+	g_signal_connect (save_btn, "clicked", G_CALLBACK (svb_sub), mwin);	// SIG: click on save button signal
+	gtk_box_append (GTK_BOX(hbtnsc), save_btn);
 
-	g_signal_connect (open_btn, "clicked", G_CALLBACK (insrt_sub), mwin);	// click on insert button signal
-	gtk_header_bar_pack_start (GTK_HEADER_BAR (header), open_btn);		// attach open button to the header bar
+	gtk_header_bar_pack_start (GTK_HEADER_BAR (header), hbtnsc);		// attach buttons container to the header bar
 
 	/* main window layout */
-	winpan = gtk_paned_new (GTK_ORIENTATION_HORIZONTAL);			// create paned view
-	cpan = gtk_box_new (GTK_ORIENTATION_VERTICAL, 10);			// create control pane
-	popan = gtk_scrolled_window_new ();					// create picture output pane
-	in_pic = gtk_picture_new ();						// create picture object
+	winpan = gtk_paned_new (GTK_ORIENTATION_HORIZONTAL);			// INIT: create paned view
+	cpan = gtk_box_new (GTK_ORIENTATION_VERTICAL, 10);			// INIT: create control pane
+	popan = gtk_scrolled_window_new ();					// INIT: create picture output pane
+	in_pic = gtk_picture_new ();						// INIT: create picture object
 
 	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW(popan), in_pic);	// attach picture to pane
 	gtk_paned_set_start_child (GTK_PANED (winpan), cpan);			// attach control pane
