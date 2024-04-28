@@ -7,6 +7,8 @@ struct gui_info_struct {
 	unsigned char tf_l;							// threshold filter lower limit
 	unsigned char tf_u;							// threshold filter upper limit
 	gboolean tf_stat;							// threshold filter enable/disable
+	float exfv;								// exposure value
+	gboolean ex_stat;							// threshold filter enable/disable
 } gui_info = {0, 190, FALSE};							// set default values of gui input elements
 
 GtkWidget *inpic;								// inserted picture widget
@@ -25,11 +27,12 @@ void apply_filters () {
 	unsigned int pixbuf_size = gdk_pixbuf_get_byte_length(inpic_obuf);// INIT: number of buffer pixels * bit depth
 	int pic_type = gdk_pixbuf_get_n_channels (inpic_obuf);
 
+	/* apply filters based on number of channels */
+	switch (pic_type)
+	{
+	case RGBA:
 	/* threshold filter */
-	if (gui_info.tf_stat)							// apply if asked for
-		switch (pic_type)						// based on number of channels
-		{
-		case RGBA:
+	if (gui_info.tf_stat)							// apply threshold filter if asked for
 		for (unsigned int i = 0; i < pixbuf_size; i += 4)
 			if (inpic_cbuf_ptr[i] > gui_info.tf_u) {
 				inpic_cbuf_ptr[i] = 255;
@@ -43,8 +46,19 @@ void apply_filters () {
 				inpic_cbuf_ptr[i + 2] = 0;
 				inpic_cbuf_ptr[i + 3] = 255;
 			}
-		break;
-		case RGB:
+	/* exposure */
+	if (gui_info.ex_stat)							// apply exposure filter if asked for
+		for (unsigned int i = 0; i < pixbuf_size; i += 4)
+			if ((float)inpic_cbuf_ptr[i] * gui_info.exfv > 255) {
+				inpic_cbuf_ptr[i] = 255;
+				inpic_cbuf_ptr[i + 1] = 255;
+				inpic_cbuf_ptr[i + 2] = 255;
+				inpic_cbuf_ptr[i + 3] = 255;
+			}
+	break;
+	case RGB:
+	/* threshold filter */
+	if (gui_info.tf_stat)							// apply threshold filter if asked for
 		for (unsigned int i = 0; i < pixbuf_size; i += 3)
 			if (inpic_cbuf_ptr[i] > gui_info.tf_u) {
 				inpic_cbuf_ptr[i] = 255;
@@ -56,8 +70,16 @@ void apply_filters () {
 				inpic_cbuf_ptr[i + 1] = 0;
 				inpic_cbuf_ptr[i + 2] = 0;
 			}
-		break;
-		}
+	/* exposure */
+	if (gui_info.ex_stat)							// apply exposure filter if asked for
+		for (unsigned int i = 0; i < pixbuf_size; i += 3)
+			if ((float)inpic_cbuf_ptr[i] * gui_info.exfv > 255) {
+				inpic_cbuf_ptr[i] = 255;
+				inpic_cbuf_ptr[i + 1] = 255;
+				inpic_cbuf_ptr[i + 2] = 255;
+			}
+	break;
+	}
 
 	ipictxt = gdk_texture_new_for_pixbuf (inpic_cbuf);			// create texutre from the copy of pixel data
 	gtk_picture_set_paintable (GTK_PICTURE(inpic), GDK_PAINTABLE(ipictxt));
@@ -217,6 +239,19 @@ void svb_sub (GtkWidget* widget, GtkWindow* main_window) {
 	gtk_file_dialog_save (sdiag, main_window, NULL, &save_cb, NULL);	// save_cb will be called on save or cancel
 }
 
+/* CALLBACK: exposure state: active/deactive */
+void exf_st (GtkWidget *this, GtkWidget *ex_slider) {
+	// skip when no picture is available
+	if (!inpic_obuf) {
+		gtk_check_button_set_active (GTK_CHECK_BUTTON(this), FALSE);	// reset threshold filter availability
+		return;
+	}
+	gboolean st = gtk_check_button_get_active (GTK_CHECK_BUTTON(this));	// get tf_check status
+	gtk_widget_set_sensitive (ex_slider, st);				// set ex_slider state accordingly
+	gui_info.ex_stat = st;							// make threshold filter available/inavailable accordingly
+	apply_filters ();							// recalculate filters
+}
+
 /* CALLBACK: threshold filter state: active/deactive */
 void tf_st (GtkWidget *this, GObject *tf_sliders) {
 	// skip when no picture is available
@@ -246,6 +281,12 @@ void tfu_clb (GtkWidget *this, gpointer data) {
 	apply_filters ();							// recalculate filters
 }
 
+/* CALLBACK: on exposure filter value change */
+void exf_clb (GtkWidget *this, gpointer data) {
+	gui_info.exfv = gtk_range_get_value (GTK_RANGE(this));			// get exposure filter value
+	apply_filters ();							// recalculate filters
+}
+
 /* CALLBACK: on threshold filter upper limit value change */
 void tfl_clb (GtkWidget *this, gpointer data) {
 	gui_info.tf_l = gtk_range_get_value (GTK_RANGE(this));			// get lower limit slider value
@@ -270,6 +311,7 @@ void activate (GtkApplication *app, gpointer user_data) {
 	GtkWidget* save_btn_lbl, *save_btn_icn, *save_btn_box, *save_btn;	// save picture button
 
 	GtkWidget *tf_box, *tf_check, *tf_uval, *tf_lval;			// threshold filter
+	GtkWidget *exf_box, *exf_check, *exf_val;				// exposure filter
 
 	/* main window */
 	mwin = gtk_application_window_new (app);				// INIT: create main window
@@ -334,28 +376,45 @@ void activate (GtkApplication *app, gpointer user_data) {
 
 	/* control pane */
 	// threshold filter
-	tf_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);			// threshold filter item
-	tf_check = gtk_check_button_new_with_label ("threshold filter");	// threshold filter checkbox
+	tf_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);			// INIT: threshold filter item
+	tf_check = gtk_check_button_new_with_label ("threshold filter");	// INIT: threshold filter checkbox
 	tf_uval = gtk_scale_new_with_range (GTK_ORIENTATION_HORIZONTAL
-						, 0, 255, 1);			// threshold filter upper value
+						, 0, 255, 1);			// INIT: threshold filter upper value
 	tf_lval = gtk_scale_new_with_range (GTK_ORIENTATION_HORIZONTAL
-						, 0, 255, 1);			// threshold filter upper value
-	gtk_scale_set_draw_value (GTK_SCALE(tf_uval), TRUE);			// upper value slider decorations
-	gtk_scale_set_draw_value (GTK_SCALE(tf_lval), TRUE);			// lower value slider decorations
-	gtk_widget_set_sensitive (tf_uval, FALSE);				// deactivate upper value slider at first till tf_check
-	gtk_widget_set_sensitive (tf_lval, FALSE);				// deactivate lower value slider at first till tf_check
-	gtk_range_set_value (GTK_RANGE(tf_uval), gui_info.tf_u);		// threshold filter upper limit default value
-	gtk_range_set_value (GTK_RANGE(tf_lval), gui_info.tf_l);		// threshold filter upper lower default value
+						, 0, 255, 1);			// INIT: threshold filter upper value
+	gtk_scale_set_draw_value (GTK_SCALE(tf_uval), TRUE);			// ATTR: upper value slider decorations
+	gtk_scale_set_draw_value (GTK_SCALE(tf_lval), TRUE);			// ATTR: lower value slider decorations
+	gtk_widget_set_sensitive (tf_uval, FALSE);				// ATTR: deactivate upper value slider at first till tf_check
+	gtk_widget_set_sensitive (tf_lval, FALSE);				// ATTR: deactivate lower value slider at first till tf_check
+	gtk_range_set_value (GTK_RANGE(tf_uval), gui_info.tf_u);		// ATTR: threshold filter upper limit default value
+	gtk_range_set_value (GTK_RANGE(tf_lval), gui_info.tf_l);		// ATTR: threshold filter upper lower default value
 
 	gtk_box_append (GTK_BOX(tf_box), tf_check);				// attach checkbox to threshold filter container
 	gtk_box_append (GTK_BOX(tf_box), tf_uval);				// attach upper value slider to threshold filter container
 	gtk_box_append (GTK_BOX(tf_box), tf_lval);				// attach lower value slider to threshold filter container
 	gtk_box_append (GTK_BOX(cpan), tf_box);					// attach threshold filter item to control pane
-	g_signal_connect (tf_uval, "value-changed", G_CALLBACK (tfu_clb), NULL);// attach threshold filter signal on upper limit value change
-	g_signal_connect (tf_lval, "value-changed", G_CALLBACK (tfl_clb), NULL);// attach threshold filter signal on lower limit value change
-	g_object_set_data (G_OBJECT(tf_check), "tf_uval", tf_uval);		// append tf_uval to tf_check and name it for later recovery
+
+	g_signal_connect (tf_uval, "value-changed", G_CALLBACK (tfu_clb), NULL);// SIG: attach threshold filter signal on upper limit value change
+	g_signal_connect (tf_lval, "value-changed", G_CALLBACK (tfl_clb), NULL);// SIG: attach threshold filter signal on lower limit value change
+	g_object_set_data (G_OBJECT(tf_check), "tf_uval", tf_uval);		// SIGHACK: append tf_uval to tf_check and name it for later recovery
 	g_object_set_data (G_OBJECT(tf_check), "tf_lval", tf_lval);		// and preventing globals
-	g_signal_connect (tf_check, "toggled", G_CALLBACK (tf_st), tf_check);	// attach threshold filter signal on activation/deactivation
+	g_signal_connect (tf_check, "toggled", G_CALLBACK (tf_st), tf_check);	// SIG: attach threshold filter signal on activation/deactivation
+
+	// exposure filter
+	exf_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);			// INIT: exposure filter item
+	exf_check = gtk_check_button_new_with_label ("exposure");		// INIT: exposure filter checkbox
+	exf_val = gtk_scale_new_with_range (GTK_ORIENTATION_HORIZONTAL
+						, 1.f, 3.f, .1f);		// INIT: exposure filter value
+
+	gtk_scale_set_draw_value (GTK_SCALE(exf_val), TRUE);			// ATTR: exposure filter value slider decorations
+	gtk_widget_set_sensitive (exf_val, FALSE);				// ATTR: deactivate exposure filter value slider at first till ex_check
+
+	gtk_box_append (GTK_BOX(exf_box), exf_check);				// attach checkbox to exposure filter container
+	gtk_box_append (GTK_BOX(exf_box), exf_val);				// attach upper value slider to exposure filter container
+	gtk_box_append (GTK_BOX(cpan), exf_box);					// attach exposure filter item to control pane
+
+	g_signal_connect (exf_val, "value-changed", G_CALLBACK (exf_clb), NULL);// SIG: attach exposure filter signal on upper limit value change
+	g_signal_connect (exf_check, "toggled", G_CALLBACK (exf_st), exf_val);	// SIG: attach exposure filter signal on activation/deactivation
 
 	/* render */
 	gtk_window_present (GTK_WINDOW (mwin));
