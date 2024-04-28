@@ -1,3 +1,6 @@
+#define RGBA 4
+#define RGB 3
+
 #include <gtk/gtk.h>
 
 struct gui_info_struct {
@@ -19,15 +22,42 @@ void apply_filters () {
 	g_clear_object (&inpic_cbuf);						// clear previous pixel buffer
 	inpic_cbuf = gdk_pixbuf_copy (inpic_obuf);				// INIT: make a copy of original pixbuf
 	inpic_cbuf_ptr = gdk_pixbuf_get_pixels (inpic_cbuf);			// INIT: pixel data ptr for current picture
-	const unsigned int pixbuf_size = gdk_pixbuf_get_byte_length(inpic_obuf);// INIT: number of buffer pixels * bit depth
+	unsigned int pixbuf_size = gdk_pixbuf_get_byte_length(inpic_obuf);// INIT: number of buffer pixels * bit depth
+	int pic_type = gdk_pixbuf_get_n_channels (inpic_obuf);
 
 	/* threshold filter */
 	if (gui_info.tf_stat)							// apply if asked for
-		for (unsigned int i = 0; i < pixbuf_size; i++)
-			if (inpic_cbuf_ptr[i] > gui_info.tf_u)
+		switch (pic_type)						// based on number of channels
+		{
+		case RGBA:
+		for (unsigned int i = 0; i < pixbuf_size; i += 4)
+			if (inpic_cbuf_ptr[i] > gui_info.tf_u) {
 				inpic_cbuf_ptr[i] = 255;
-			else if (inpic_cbuf_ptr[i] < gui_info.tf_l)
+				inpic_cbuf_ptr[i + 1] = 255;
+				inpic_cbuf_ptr[i + 2] = 255;
+				inpic_cbuf_ptr[i + 3] = 255;
+			}
+			else if (inpic_cbuf_ptr[i] < gui_info.tf_l) {
 				inpic_cbuf_ptr[i] = 0;
+				inpic_cbuf_ptr[i + 1] = 0;
+				inpic_cbuf_ptr[i + 2] = 0;
+				inpic_cbuf_ptr[i + 3] = 255;
+			}
+		break;
+		case RGB:
+		for (unsigned int i = 0; i < pixbuf_size; i += 3)
+			if (inpic_cbuf_ptr[i] > gui_info.tf_u) {
+				inpic_cbuf_ptr[i] = 255;
+				inpic_cbuf_ptr[i + 1] = 255;
+				inpic_cbuf_ptr[i + 2] = 255;
+			}
+			else if (inpic_cbuf_ptr[i] < gui_info.tf_l) {
+				inpic_cbuf_ptr[i] = 0;
+				inpic_cbuf_ptr[i + 1] = 0;
+				inpic_cbuf_ptr[i + 2] = 0;
+			}
+		break;
+		}
 
 	ipictxt = gdk_texture_new_for_pixbuf (inpic_cbuf);			// create texutre from the copy of pixel data
 	gtk_picture_set_paintable (GTK_PICTURE(inpic), GDK_PAINTABLE(ipictxt));
@@ -123,6 +153,8 @@ void open_cb (GObject *odiag, GAsyncResult *res, gpointer data) {
 	ipicf = gtk_file_dialog_open_finish (GTK_FILE_DIALOG(odiag), res, NULL);// open file
 	// skip on cancel
 	if (ipicf) {
+		g_clear_object (&inpic_obuf);					// clear previous pixel buffer
+		g_clear_object (&inpic_cbuf);					// clear previous pixel buffer
 		inpic_obuf = gdk_pixbuf_new_from_file (	g_file_get_path(ipicf),
 							NULL );			// retrive pixel data from picture file
 		gdk_pixbuf_saturate_and_pixelate (	inpic_obuf,
