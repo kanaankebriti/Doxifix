@@ -161,10 +161,14 @@ void open_cb (GObject *odiag, GAsyncResult *res, gpointer data) {
 							inpic_obuf,
 							0.f,
 							FALSE );		// convert to grayscale
-		ipictxt = gdk_texture_new_for_pixbuf (inpic_obuf);		// create texutre from pixel data
-		gtk_picture_set_paintable (	GTK_PICTURE(inpic),
-						GDK_PAINTABLE(ipictxt) );	// render texture
-		g_clear_object (&ipictxt);					// clear texture
+		if (gui_info.tf_stat)						// perform same filters for new image
+			apply_filters();
+		else {
+			ipictxt = gdk_texture_new_for_pixbuf (inpic_obuf);	// create texutre from pixel data
+			gtk_picture_set_paintable (	GTK_PICTURE(inpic),
+							GDK_PAINTABLE(ipictxt));// render texture
+			g_clear_object (&ipictxt);				// clear texture
+		}
 	}
 }
 
