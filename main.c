@@ -82,7 +82,7 @@ void apply_filters () {
 	}
 
 	ipictxt = gdk_texture_new_for_pixbuf (inpic_cbuf);			// create texutre from the copy of pixel data
-	gtk_picture_set_paintable (GTK_PICTURE(inpic), GDK_PAINTABLE(ipictxt));
+	gtk_image_set_from_paintable (GTK_IMAGE(inpic), GDK_PAINTABLE(ipictxt));
 	//gdk_texture_save_to_png (ipictxt, "cv.png");
 	g_clear_object (&ipictxt);						// clear texture
 }
@@ -187,7 +187,7 @@ void open_cb (GObject *odiag, GAsyncResult *res, gpointer data) {
 			apply_filters();
 		else {
 			ipictxt = gdk_texture_new_for_pixbuf (inpic_obuf);	// create texutre from pixel data
-			gtk_picture_set_paintable (	GTK_PICTURE(inpic),
+			gtk_image_set_from_paintable (	GTK_IMAGE(inpic),
 							GDK_PAINTABLE(ipictxt));// render texture
 			g_clear_object (&ipictxt);				// clear texture
 		}
@@ -355,23 +355,22 @@ void activate (GtkApplication *app, gpointer user_data) {
 	winpan = gtk_paned_new (GTK_ORIENTATION_HORIZONTAL);			// INIT: create paned view
 	cpan = gtk_box_new (GTK_ORIENTATION_VERTICAL, 10);			// INIT: create control pane
 	popan = gtk_scrolled_window_new ();					// INIT: create picture output pane
-	inpic = gtk_picture_new ();						// INIT: create picture object
-
-	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW(popan), inpic);	// attach picture to pane
-	gtk_paned_set_start_child (GTK_PANED (winpan), cpan);			// attach control pane
-	gtk_paned_set_end_child (GTK_PANED (winpan), popan);			// attach picture output pane
+	inpic = gtk_image_new_from_icon_name ("emblem-photos-symbolic");	// INIT: create picture object
 
 	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW(popan),
 					GTK_POLICY_ALWAYS,
-					GTK_POLICY_ALWAYS);			// picture output window decorations
-
-	gtk_widget_set_size_request (cpan, 300, 600);				// control pane intial size
-	gtk_widget_set_size_request (popan, 500, 600);				// picture output intial size
-	gtk_paned_set_resize_start_child (GTK_PANED (winpan), FALSE);		// main pane decorations
+					GTK_POLICY_ALWAYS);			// ATTR: picture output window decorations
+	gtk_image_set_icon_size (GTK_IMAGE(inpic), GTK_ICON_SIZE_LARGE);	// ATTR: set initial icon large
+	gtk_widget_set_size_request (cpan, 300, 600);				// ATTR: control pane intial size
+	gtk_widget_set_size_request (popan, 500, 600);				// ATTR: picture output intial size
+	gtk_paned_set_resize_start_child (GTK_PANED (winpan), FALSE);		// ATTR: main pane decorations
 	gtk_paned_set_shrink_start_child (GTK_PANED (winpan), FALSE);
 	gtk_paned_set_resize_end_child (GTK_PANED (winpan), TRUE);
 	gtk_paned_set_shrink_end_child (GTK_PANED (winpan), FALSE);
 
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW(popan), inpic);	// attach picture to pane
+	gtk_paned_set_start_child (GTK_PANED (winpan), cpan);			// attach control pane
+	gtk_paned_set_end_child (GTK_PANED (winpan), popan);			// attach picture output pane
 	gtk_window_set_child (GTK_WINDOW (mwin), winpan);			// attach paned view to the main window
 
 	/* control pane */
@@ -404,7 +403,7 @@ void activate (GtkApplication *app, gpointer user_data) {
 	exf_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);			// INIT: exposure filter item
 	exf_check = gtk_check_button_new_with_label ("exposure");		// INIT: exposure filter checkbox
 	exf_val = gtk_scale_new_with_range (GTK_ORIENTATION_HORIZONTAL
-						, 1.f, 3.f, .1f);		// INIT: exposure filter value
+						, 1.f, 4.f, .05f);		// INIT: exposure filter value
 
 	gtk_scale_set_draw_value (GTK_SCALE(exf_val), TRUE);			// ATTR: exposure filter value slider decorations
 	gtk_widget_set_sensitive (exf_val, FALSE);				// ATTR: deactivate exposure filter value slider at first till ex_check
